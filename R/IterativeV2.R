@@ -46,7 +46,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
       next
     }
     cluster.object <- FindNeighbors(cluster.object, dims = 1:n.dims, reduction = dim.reduction, verbose = FALSE)
-    cluster.object <- FindClusters(cluster.object, resolution = 0.2, algorithm = 4, method = "igraph")
+    cluster.object <- FindClusters(cluster.object, resolution = 1, algorithm = 4, method = "igraph")
 
     repeat {
       sub_clusters <- unique(cluster.object$seurat_clusters)
