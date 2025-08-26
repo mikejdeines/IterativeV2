@@ -39,7 +39,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
   require(Seurat)
   unique_clusters <- unique(seurat.object$seurat_clusters)
     
-    for (cluster_id in unique_clusters){
+  for (cluster_id in unique_clusters){
         Idents(seurat.object) <- seurat.object$seurat_clusters
         cluster.object <- subset(seurat.object, idents = cluster_id)
         if (ncol(cluster.object) < min.cluster.size) {
@@ -108,6 +108,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         }
     }
     return(seurat.object)
+  }
 FindCentroids <- function(seurat.object, n.dims, dim.reduction) {
   #' Calculates centroids for each cluster in dim.reduction space
   #' @param seurat.object a normalized, integrated Seurat object
