@@ -38,67 +38,76 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
   #' @returns a Seurat object with the results of the iteration in the seurat_clusters metadata value
   require(Seurat)
   unique_clusters <- unique(seurat.object$seurat_clusters)
-
-  for (cluster_id in unique_clusters){
-    Idents(seurat.object) <- seurat.object$seurat_clusters
-    cluster.object <- subset(seurat.object, idents = cluster_id)
-    if (ncol(cluster.object) < min.cluster.size) {
-      next
-    }
-    if (ncol(cluster.object) < 20){
-      cluster.object <- FindNeighbors(cluster.object, k.param = floor(ncol(cluster.object)/2), dims = 1:n.dims, reduction = dim.reduction, verbose = FALSE)
-    }
-    else {
-      cluster.object <- FindNeighbors(cluster.object, dims = 1:n.dims, reduction = dim.reduction, verbose = FALSE)
-    }
-    cluster.object <- FindClusters(cluster.object, resolution = 0.5, algorithm = 4, method = "igraph")
-
-    repeat {
-      sub_clusters <- unique(cluster.object$seurat_clusters)
-      prev_n_subclusters <- length(sub_clusters)
-      if (prev_n_subclusters <= 1) {
-        break
-      }
-      centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
-      dist_matrix <- as.matrix(dist(centroids))
-      changed <- FALSE
-      merged_pairs <- list()
-      for (j in seq_along(sub_clusters)) {
-        cluster1 <- sub_clusters[j]
-        distances <- dist_matrix[j, ]
-        distances[j] <- Inf
-        closest_idx <- which.min(distances)
-        cluster2 <- sub_clusters[closest_idx]
-        pair_key <- paste(sort(c(cluster1, cluster2)), collapse = "_")
-        if (pair_key %in% merged_pairs) {
-          next
+    
+    for (cluster_id in unique_clusters){
+        Idents(seurat.object) <- seurat.object$seurat_clusters
+        cluster.object <- subset(seurat.object, idents = cluster_id)
+        if (ncol(cluster.object) < min.cluster.size) {
+            next
         }
-        de_score <- CalculateDEScore(cluster.object, cluster1, cluster2, pct.1, min.log2.fc)
-        if (de_score < min.de.score || sum(cluster.object$seurat_clusters == cluster2) < min.cluster.size || sum(cluster.object$seurat_clusters == cluster1) < min.cluster.size) {
-          cluster.object$seurat_clusters[cluster.object$seurat_clusters == cluster2] <- cluster1
-          changed <- TRUE
-          merged_pairs <- c(merged_pairs, pair_key)
+        if (ncol(cluster.object) < 20){
+          cluster.object <- FindNeighbors(cluster.object, dims = 1:n.dims, reduction = dim.reduction, k.param = floor(ncol(cluster.object)/2), verbose = FALSE)
         }
-      }
-      sub_clusters_new <- unique(cluster.object$seurat_clusters)
-      if (length(sub_clusters_new) == prev_n_subclusters || !changed) {
-        break
-      }
+        else {
+          cluster.object <- FindNeighbors(cluster.object, dims = 1:n.dims, reduction = dim.reduction, verbose = FALSE)
+        }
+        cluster.object <- FindClusters(cluster.object, resolution = 0.8, algorithm = 4, method = "igraph")
+        
+        repeat {
+                sub_clusters <- unique(cluster.object$seurat_clusters)
+                prev_n_subclusters <- length(sub_clusters)
+                if (prev_n_subclusters <= 1) {
+                    break
+                }
+                changed <- FALSE
+                merged_pairs <- list()
+                centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
+                dist_matrix <- as.matrix(dist(centroids))
+                cluster_map <- setNames(seq_along(sub_clusters), sub_clusters)
+                merged <- FALSE
+                for (cluster1 in sub_clusters) {
+                    if (!(as.character(cluster1) %in% names(cluster_map))) {
+                        next
+                    }
+                    j <- cluster_map[[as.character(cluster1)]]
+                    distances <- dist_matrix[j, ]
+                    distances[j] <- Inf
+                    closest_idx <- which.min(distances)
+                    cluster2 <- sub_clusters[closest_idx]
+                    pair_key <- paste(sort(c(cluster1, cluster2)), collapse = "_")
+                    if (pair_key %in% merged_pairs) {
+                        next
+                    }
+                    de_score <- CalculateDEScore(cluster.object, cluster1, cluster2, pct.1, min.log2.fc)
+                    if (de_score < min.de.score || sum(cluster.object$seurat_clusters == cluster2) < min.cluster.size || sum(cluster.object$seurat_clusters == cluster1) < min.cluster.size) {
+                        cluster.object$seurat_clusters[cluster.object$seurat_clusters == cluster2] <- cluster1
+                        changed <- TRUE
+                        merged_pairs <- c(merged_pairs, pair_key)
+                        merged <- TRUE
+                        break
+                    }
+                }
+                if (merged) {
+                    next
+                }
+                sub_clusters_new <- unique(cluster.object$seurat_clusters)
+                if (length(sub_clusters_new) == prev_n_subclusters || !changed) {
+                    break
+                }
+        }
+        
+        cluster.cells <- WhichCells(cluster.object)
+        sub_clusters_final <- unique(cluster.object$seurat_clusters)
+        if (length(sub_clusters_final) == 1) {
+            seurat.object$seurat_clusters[cluster.cells] <- cluster_id
+        } else {
+            for (k in sub_clusters_final) {
+                sub_cluster_cells <- WhichCells(cluster.object, idents = k)
+                seurat.object$seurat_clusters[sub_cluster_cells] <- paste0(cluster_id, "_", k)
+            }
+        }
     }
-
-    cluster.cells <- WhichCells(cluster.object)
-    sub_clusters_final <- unique(cluster.object$seurat_clusters)
-    if (length(sub_clusters_final) == 1) {
-      seurat.object$seurat_clusters[cluster.cells] <- cluster_id
-    } else {
-      for (k in sub_clusters_final) {
-        sub_cluster_cells <- WhichCells(cluster.object, idents = k)
-        seurat.object$seurat_clusters[sub_cluster_cells] <- paste0(cluster_id, "_", k)
-      }
-    }
-  }
-  return(seurat.object)
-}
+    return(seurat.object)
 FindCentroids <- function(seurat.object, n.dims, dim.reduction) {
   #' Calculates centroids for each cluster in dim.reduction space
   #' @param seurat.object a normalized, integrated Seurat object
