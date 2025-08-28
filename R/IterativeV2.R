@@ -99,17 +99,18 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         cluster.cells <- WhichCells(cluster.object)
         sub_clusters_final <- unique(cluster.object$seurat_clusters)
         if (length(sub_clusters_final) == 1) {
-            seurat.object$seurat_clusters[cluster.cells] <- cluster_id
+            # If only one subcluster, label as parent_1
+            seurat.object$seurat_clusters[cluster.cells] <- paste0(cluster_id, "_1")
         } else {
             for (i in seq_along(sub_clusters_final)) {
                 k <- sub_clusters_final[i]
                 sub_cluster_cells <- WhichCells(cluster.object, idents = k)
-                seurat.object$seurat_clusters[sub_cluster_cells] <- paste0(cluster_id, "_", k, "_", i)
+                seurat.object$seurat_clusters[sub_cluster_cells] <- paste0(cluster_id, "_", i)
             }
         }
     }
     return(seurat.object)
-  }
+}
 FindCentroids <- function(seurat.object, n.dims, dim.reduction) {
   #' Calculates centroids for each cluster in dim.reduction space
   #' @param seurat.object a normalized, integrated Seurat object
