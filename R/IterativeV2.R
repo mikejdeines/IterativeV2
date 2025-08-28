@@ -37,9 +37,9 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
   #' @param dim.reduction the dimensional reduction used to create the sNN graph and calculate centroids
   #' @returns a Seurat object with the results of the iteration in the seurat_clusters metadata value
   require(Seurat)
-  unique_clusters <- unique(seurat.object$seurat_clusters)
+    unique_clusters <- unique(seurat.object$seurat_clusters)
     
-  for (cluster_id in unique_clusters){
+    for (cluster_id in unique_clusters){
         Idents(seurat.object) <- seurat.object$seurat_clusters
         cluster.object <- subset(seurat.object, idents = cluster_id)
         if (ncol(cluster.object) < min.cluster.size) {
@@ -101,14 +101,15 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         if (length(sub_clusters_final) == 1) {
             seurat.object$seurat_clusters[cluster.cells] <- cluster_id
         } else {
-            for (k in sub_clusters_final) {
+            for (i in seq_along(sub_clusters_final)) {
+                k <- sub_clusters_final[i]
                 sub_cluster_cells <- WhichCells(cluster.object, idents = k)
-                seurat.object$seurat_clusters[sub_cluster_cells] <- paste0(cluster_id, "_", k)
+                seurat.object$seurat_clusters[sub_cluster_cells] <- paste0(cluster_id, "_", i)
             }
         }
     }
     return(seurat.object)
-  }
+}
 FindCentroids <- function(seurat.object, n.dims, dim.reduction) {
   #' Calculates centroids for each cluster in dim.reduction space
   #' @param seurat.object a normalized, integrated Seurat object
