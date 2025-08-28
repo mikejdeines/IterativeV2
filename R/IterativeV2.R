@@ -104,12 +104,11 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
             for (i in seq_along(sub_clusters_final)) {
                 k <- sub_clusters_final[i]
                 sub_cluster_cells <- WhichCells(cluster.object, idents = k)
-                seurat.object$seurat_clusters[sub_cluster_cells] <- paste0(cluster_id, "_", i)
+                seurat.object$seurat_clusters[sub_cluster_cells] <- paste0(cluster_id, "_", k, "_", i)
             }
         }
     }
     return(seurat.object)
-}
 FindCentroids <- function(seurat.object, n.dims, dim.reduction) {
   #' Calculates centroids for each cluster in dim.reduction space
   #' @param seurat.object a normalized, integrated Seurat object
