@@ -12,6 +12,7 @@ IterativeClustering <- function(seurat.object, max.iterations = 20,
   #' @param dim.reduction the dimensional reduction used to create the sNN graph and calculate centroids. Default pca.
   #' @returns a Seurat object with iterative clustering results in the seurat_clusters metadata value
   require(Seurat)
+  require(scCustomize)
   iteration <- 1
   prev.n.clusters <- 1
   seurat.object$seurat_clusters <- 1
@@ -24,10 +25,9 @@ IterativeClustering <- function(seurat.object, max.iterations = 20,
     prev.n.clusters <- curr.n.clusters
     iteration <- iteration + 1
   }
-  final_clusters <- unique(seurat.object$seurat_clusters)
-    for (i in seq_along(final_clusters)) {
-        seurat.object$seurat_clusters[seurat.object$seurat_clusters == final_clusters[i]] <- as.character(i)
-    }
+  Idents(seurat.object) <- seurat.object$seurat_clusters
+  seurat.object <- Rename_Clusters(seurat.object, seq(1, length(unique(seurat.object$seurat_clusters))))
+  seurat.object$seurat_clusters <- Idents(seurat.object)
   return(seurat.object)
 }
 RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score, pct.1, min.log2.fc, n.dims, dim.reduction){
