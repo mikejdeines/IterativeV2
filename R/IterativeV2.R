@@ -55,7 +55,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         else {
           cluster.object <- FindNeighbors(cluster.object, dims = 1:n.dims, reduction = dim.reduction, verbose = FALSE)
         }
-        cluster.object <- FindClusters(cluster.object, resolution = 1, algorithm = 4, random.seed = 1)
+        cluster.object <- FindClusters(cluster.object, algorithm = 4, random.seed = 1)
         
         repeat {
                 sub_clusters <- unique(cluster.object$seurat_clusters)
@@ -138,6 +138,9 @@ CalculateDEScore <- function(seurat.object, cluster1, cluster2, pct.1, min.log2.
   #' @param min.log2.fc the minimum log2 fold change required for genes used to calculate the DE score
   #' @returns the DE score between the pair of clusters
   require(Seurat)
+  if (sum(seurat.object$seurat_clusters == cluster1) < 3 || sum(seurat.object$seurat_clusters == cluster2) < 3) {
+        return(0)
+  }
   markers <- FindMarkers(seurat.object, ident.1 = cluster1, ident.2 = cluster2, min.pct = 0.1, logfc.threshold = min.log2.fc, recorrect_umi = FALSE)
   markers <- markers[abs(markers$avg_log2FC) > min.log2.fc, ]
   markers <- markers[markers$pct.1 > pct.1 | markers$pct.2 > pct.1, ]
