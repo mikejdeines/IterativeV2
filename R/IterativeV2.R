@@ -145,9 +145,27 @@ CalculateDEScore <- function(seurat.object, cluster1, cluster2, pct.1, min.log2.
                           fc.thr = 1, min.pct = 0, max.pval = 1, min.count = 10,
                           icc = "i", df.correction = FALSE)
   markers <- markers[abs(markers$log2FC) < Inf, ]
+  
+  if (nrow(markers) == 0) {
+    return(0)
+  }
+  
   markers$p_val_adj <- p.adjust(markers$p.value, method = "BH")
-  markers$pct.1 <- length(which(seurat.object@assays[["RNA"]]@layers$counts[rownames(markers), colnames(seurat.object)[seurat.object$seurat_clusters == cluster1]] > 0)) / sum(seurat.object$seurat_clusters == cluster1)
-  markers$pct.2 <- length(which(seurat.object@assays[["RNA"]]@layers$counts[rownames(markers), colnames(seurat.object)[seurat.object$seurat_clusters == cluster2]] > 0)) / sum(seurat.object$seurat_clusters == cluster2)
+  
+  # Get count matrix
+  counts_matrix <- seurat.object@assays[["RNA"]]@layers$counts
+  cells_cluster1 <- which(seurat.object$seurat_clusters == cluster1)
+  cells_cluster2 <- which(seurat.object$seurat_clusters == cluster2)
+  
+  # Calculate pct.1 and pct.2 for each gene
+  gene_indices <- match(rownames(markers), rownames(seurat.object))
+  markers$pct.1 <- sapply(gene_indices, function(i) {
+    sum(counts_matrix[i, cells_cluster1] > 0) / length(cells_cluster1)
+  })
+  markers$pct.2 <- sapply(gene_indices, function(i) {
+    sum(counts_matrix[i, cells_cluster2] > 0) / length(cells_cluster2)
+  })
+  
   markers <- markers[abs(markers$log2FC) > min.log2.fc, ]
   markers <- markers[markers$pct.1 > pct.1 | markers$pct.2 > pct.1, ]
   markers$p_val_adj[markers$p_val_adj == 0] <- 1e-310
