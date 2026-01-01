@@ -141,12 +141,187 @@ CalculateDEScore <- function(seurat.object, cluster1, cluster2, pct.1, min.log2.
   if (sum(seurat.object$seurat_clusters == cluster1) < 3 || sum(seurat.object$seurat_clusters == cluster2) < 3) {
         return(0)
   }
-  markers <- FindMarkers(seurat.object, ident.1 = cluster1, ident.2 = cluster2, min.pct = 0.1, logfc.threshold = min.log2.fc, recorrect_umi = FALSE)
-  markers <- markers[abs(markers$avg_log2FC) > min.log2.fc, ]
+  markers <- DGE.2samples(seurat.object, ident.1 = cluster1, ident.2 = cluster2, 
+                          fc.thr = 1, min.pct = 0, max.pval = 1, min.count = 10,
+                          icc = "i", df.correction = FALSE)
+  markers <- markers[abs(markers$log2FC) < Inf, ]
+  markers$p_val_adj <- p.adjust(markers$p.value, method = "BH")
+  markers$pct.1 <- length(which(seurat.object@assays$RNA@counts[rownames(markers), colnames(seurat.object)[seurat.object$seurat_clusters == cluster1]] > 0)) / sum(seurat.object$seurat_clusters == cluster1)
+  markers$pct.2 <- length(which(seurat.object@assays$RNA@counts[rownames(markers), colnames(seurat.object)[seurat.object$seurat_clusters == cluster2]] > 0)) / sum(seurat.object$seurat_clusters == cluster2)
+  markers <- markers[abs(markers$log2FC) > min.log2.fc, ]
   markers <- markers[markers$pct.1 > pct.1 | markers$pct.2 > pct.1, ]
   markers$p_val_adj[markers$p_val_adj == 0] <- 1e-310
   markers$de_score <- -log10(markers$p_val_adj)
   markers$de_score[markers$de_score > 20] <- 20
   de_score <- sum(markers$de_score)
   return(de_score)
+}
+DGE.2samples <- function(object,features=NULL,ident.1=NULL,ident.2=NULL,
+                         fc.thr=1,min.pct=0,max.pval=1,min.count=30,
+                         icc="i",df.correction=FALSE) {
+  IWT<-IterWghtTtest(object,features,ident.1,ident.2,fc.thr,min.pct,max.pval=max.pval,min.count,icc=icc,df.correction)
+  Chi2<-Chi2Test(object,features=rownames(IWT),ident.1,ident.2,fc.thr=1,min.pct,max.pval=1,min.count)
+  features<-intersect(rownames(Chi2),rownames(IWT))
+  output<-IWT[features,]
+  output[features,"Chi2.p.value"]<-Chi2[features,2]
+  return(output)
+}
+IterWghtTtest <- function(object,features=NULL,ident.1=NULL,ident.2=NULL,fc.thr=1,min.pct=0,max.pval=1,min.count=30,
+                          icc="i",df.correction=FALSE) {
+  # Iterative weighted t-test for Seurat objects, see https://www.biorxiv.org/content/10.1101/2025.10.20.683496v1
+  if (is.null(features)){
+    GeneList <- rownames(object)
+  } else {
+    GeneList <- as.vector(features)
+  }
+  if (is.null(ident.1)|is.null(ident.2)) {stop("Two identities in a Seurat object must be defined using ident.1= and ident.2=")}
+  output<-data.frame(log2FC=numeric(),p.value=numeric(), col3=numeric(),col4=numeric())                   # output dataframe
+  colnames(output)<-c("log2FC","p.value", "Counts/Cell.1","Counts/Cell.2")                               # output dataframe
+  object.1 <- subset(object, idents = ident.1)                                                           # ident.1 object
+  Ci.1 <- as.matrix(object.1[["RNA"]]$counts)                                                            # ident.1 count matrix
+  Ni.1 <- colSums(Ci.1)                                                                                  # ident.1 Ni vector
+  Nc.1 <- ncol(Ci.1)                                                                                     # ident.1 number of cells
+  Xi.1 <- Ci.1                                                                                           # normalized counts initiation     
+  for (i in c(1:nrow(Ci.1))) {Xi.1[i,]=Ci.1[i,]/Ni.1}                                                    # ident.1 normalized counts
+  object.2 <- subset(object, idents = ident.2)
+  Ci.2 <- as.matrix(object.2[["RNA"]]$counts)
+  Ni.2 <- colSums(Ci.2)
+  Nc.2 <- ncol(Ci.2)
+  Xi.2 <- Ci.2
+  for (i in c(1:nrow(Ci.2))) {Xi.2[i,]=Ci.2[i,]/Ni.2}                                      
+  rowi<-0
+  print("Performing weighted t-test:")
+  pb <- txtProgressBar(min = 0, max = length(GeneList), initial = 0, style = 3)                          # initialize progress bar# output row counter
+  for (rownum in c(1:length(GeneList))) {                                                                # Main test loop
+    AC.1 <- sum(Ci.1[GeneList[rownum],])                                                                 # ident.1 aggregated counts
+    AC.2 <- sum(Ci.2[GeneList[rownum],])                                                                 # ident.2 aggregated counts
+    Xi1<-Xi.1[GeneList[rownum],]                                                                         # ident.1 normalized counts
+    Xi2<-Xi.2[GeneList[rownum],]                                                                         # ident.2 normalized counts
+    if ((AC.1 >= min.count | AC.2 >= min.count)&                                                         # checking for minumum aggregated counts
+        ((sum(Xi1!=0)/Nc.1>min.pct)|(sum(Xi2!=0)/Nc.2>min.pct))){                                        # checking for minumum expression
+      wi.1<-ICCWeight(h=Ci.1[GeneList[rownum],],n=Ni.1,icc=icc)                                          # ident.1 weights
+      wi.2<-ICCWeight(h=Ci.2[GeneList[rownum],],n=Ni.2,icc=icc)                                          # ident.2 weights
+      fc <- sum(Xi1*wi.1)/sum(Xi2*wi.2)                                                                  # fold change
+      if (!is.na(fc)){                                                                                   # removing 0/0 division
+        if ((fc >= fc.thr | fc <= 1/fc.thr)&                                                             # checking FC threshold
+            (sum(Xi1!=0)>=3|sum(Xi2!=0)>=3)) {                                                           # checking for at least 3 nonzero values in ident.1 or ident.2                                                      
+          if(df.correction==TRUE) {wTtest <- as.numeric(alt.wttest2(Xi1,Xi2,wi.1,wi.2))}                 # weighted t-test with effective df
+          else {wTtest <- as.numeric(alt.wttest(Xi1,Xi2,wi.1,wi.2))}                                     # weighted t-test without df correction
+          if (wTtest <= max.pval) {                                                                      # checking p-value threshold    
+            rowi<-rowi+1                                                                                 # output row counter
+            output[[rowi,1]] <- as.numeric(format(log(fc,2), digits=4, scientific=FALSE))                # output
+            output[[rowi,2]] <- as.numeric(format(wTtest, digits=4, scientific=FALSE))
+            output[[rowi,3]] <- as.numeric(format(AC.1/Nc.1, digits=4, scientific=FALSE))
+            output[[rowi,4]] <- as.numeric(format(AC.2/Nc.2, digits=4, scientific=FALSE))
+            row.names(output)[rowi]<-GeneList[rownum]
+          }  
+        } 
+      }
+    }
+    setTxtProgressBar(pb, rownum)                                                                        # progress bar update
+  }
+  close(pb)                                                                                              # close progress bar
+  return(output)
+}
+Chi2Test <- function(object,features=NULL,ident.1=NULL,ident.2=NULL,fc.thr=1,min.pct=0,max.pval=1,min.count=30) {
+  if (is.null(features)){
+    GL <- rownames(object)
+  } else {
+    GL <- as.vector(features)
+  }
+  if (is.null(ident.1)|is.null(ident.2)) {stop("Two identities in a Seurat object must be defined using ident.1= and ident.2=")}
+  output<-data.frame(log2FC=numeric(),p.value=numeric(),col3=numeric(),col4=numeric())                               # output dataframe
+  colnames(output)<-c("log2FC","p.value","Counts/Cell.1","Counts/Cell.2")
+  object.1 <- subset(object, idents = ident.1)                                                                       # object subsetting
+  object.2 <- subset(object, idents = ident.2)
+  Ci.1 <- as.matrix(object.1[["RNA"]]$counts)                                                                        # count matrices
+  Ci.2 <- as.matrix(object.2[["RNA"]]$counts)
+  Nc.1 <- ncol(Ci.1)                                                                                                 # number of cells
+  Nc.2 <- ncol(Ci.2)
+  AC.1 <- rowSums(Ci.1)                                                                                              # aggregate counts /gene
+  AC.2 <- rowSums(Ci.2)
+  TC.1 <- sum(AC.1)                                                                                                  # total counts /sample
+  TC.2 <- sum(AC.2)
+  rowi<-0
+  print("Performing chi^2 test:")
+  pb <- txtProgressBar(min = 0, max = length(GL), initial = 0, style = 3)                                            # initialize progress bar
+  for (rownum in c(1:length(GL))) {                                                                                  # main loop, gene by gene
+    if ((AC.1[GL[rownum]] >= min.count | AC.2[GL[rownum]] >= min.count)&                                             # checking for min.count and min.pct
+        ((sum(Ci.1[GL[rownum],]!=0)/Nc.1>min.pct)|(sum(Ci.2[GL[rownum],]!=0)/Nc.2>min.pct))){
+      ContTable <- matrix(c(TC.1 - AC.1[GL[rownum]], TC.2 - AC.2[GL[rownum]],                                        # contingency table for chi2 test
+                            AC.1[GL[rownum]], AC.2[GL[rownum]]), nrow = 2, ncol = 2)
+      fc <- as.numeric((AC.1[GL[rownum]]/TC.1)/(AC.2[GL[rownum]]/TC.2))                                              # fold change (FC)
+      if(!is.na(fc)){                                                                                                # removing features with undefined FC (=0/0)
+        if (fc >= fc.thr | fc <= 1/fc.thr) {                                                                         # checking FC threshold
+          chisquare <- as.numeric(chisq.test(ContTable)$p.value)                                                     # chi2 test
+          if (chisquare <= max.pval) {                                                                               # checking max.pval threshold
+            rowi<-rowi+1
+            output[[rowi,1]] <- as.numeric(format(log(fc,2), digits=4, scientific=FALSE))                            # output assembly
+            output[[rowi,2]] <- as.numeric(format(chisquare, digits=4, scientific=FALSE))
+            output[[rowi,3]] <- as.numeric(format(AC.1[GL[rownum]]/Nc.1, digits=4, scientific=FALSE))
+            output[[rowi,4]] <- as.numeric(format(AC.2[GL[rownum]]/Nc.2, digits=4, scientific=FALSE))
+            row.names(output)[rowi]<-GL[rownum]
+          }  
+        }
+      }
+    }
+    setTxtProgressBar(pb, rownum)                                                                                    # progress bar update
+  }
+  close(pb)                                                                                                          # close progress bar
+  return(output)
+}
+ICC.AN<-function(h,n){
+  N=sum(n)                                                    #ANOVA ICC calculation
+  k=length(n)
+  n0=(1/(k-1))*(N-sum(n^2/N))
+  MSw=(1/(N-k))*(sum(h)-sum(h^2/n))
+  MSb=(1/(k-1))*(sum(h^2/n)-(1/N)*(sum(h))^2)
+  if ((MSb+(n0-1)*MSw)==0) {ICC=0}                            #setting ICC=0 when ANOVA denominator = 0
+  else ICC=(MSb-MSw)/(MSb+(n0-1)*MSw)
+  if(ICC < 0) ICC=0                                           #resetting negative ICC to 0
+  if(ICC > 1) ICC=1                                           #resetting ICC>1 to ICC=1
+  return(ICC)
+}
+ICC.iter<-function(h,n){                                      #Iterative ICC calculation
+  x=h/n
+  w0<-n/sum(n)                                              # initial weights 
+  x0<-sum(x*w0)                                             # initial weighted average count
+  VarT0<-x0*(1-x0)/sum(n)                             # initial variance @ icc=0
+  VarE0<-sum(w0^2*(x-x0)^2)/(1-sum(w0^2))                   # initial measured variance with w0 weights
+  if (VarE0<=VarT0){icc=0}    
+  else{
+    f <- function(icc,h=h,n=n) {
+      x = h/n                                                   #normalized counts
+      wprop = n/(1 + icc*(n-1))                                 #proportional weights
+      w <- wprop/sum(wprop)                                     #normalized weights
+      x1 = sum(x*w)                                             #weighted average
+      VarT<-x1*(1-x1)/(sum(wprop))                              #VarT 
+      VarE<-sum(w^2*(x-x1)^2)/(1-sum(w^2))                      #VarE
+      VarE-VarT                                                 #VarE-VarT
+    }
+    ur = uniroot(f, 0:1, n=n, h=h, check.conv=T, extendInt="downX", tol = 1e-4/max(n))
+    icc = ur$root
+    if(icc > 1) icc=1                                           #resetting ICC>1 to ICC=1
+  }
+  return(icc)
+}
+ICCWeight <- function(h,n,icc="i") {                     #Calculation of weights based on ICC
+  Nc<-length(n)
+  if(length(h)!=Nc) {stop("Unequal lengths of Ni and Nzi vectors")} 
+  if(Nc<3) {stop("At least 3 cells are required in each ident")}
+  if (sum(h!=0)<3){w<-rep(1/Nc,Nc)} #exit and return equal weights if the number cells/samples with nonzero counts is less than 3
+  else {
+    if(icc=="i"){icc=ICC.iter(h,n)} else {
+      if(icc=="A"){icc=ICC.AN(h,n)} else {
+        if (icc==0) {icc=0} else {
+          if (icc==1) {icc=1} else {
+            stop("Invalid icc, must be icc = 'i', 'A', 0, or 1")
+          }
+        }  
+      }
+    } 
+    wprop = n/(1 + icc*(n-1))                                 #proportional weights
+    w <- wprop/sum(wprop)
+  }
+  return(w)
 }
