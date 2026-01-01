@@ -325,3 +325,18 @@ ICCWeight <- function(h,n,icc="i") {                     #Calculation of weights
   }
   return(w)
 }
+alt.wttest <- function(x1, x2, w1, w2) {
+  # alternative weighted t-test based on Margolin-Leikin variance estimator
+  stopifnot(length(x1)==length(w1) && length(x2)==length(w2))
+  w1 = w1/sum(w1)
+  m1 = sum(x1*w1)
+  vm1 = sum(w1^2*(x1-m1)^2) / (1-sum(w1^2)) # unbiased when w ~ 1/s^2 (and sum(w)=1)
+  w2 = w2/sum(w2)
+  m2 = sum(x2*w2)
+  vm2 = sum(w2^2*(x2-m2)^2) / (1-sum(w2^2)) # unbiased when w ~ 1/s^2 (and sum(w)=1)
+  s12 = sqrt(vm1 + vm2)
+  t = (m1 - m2) / s12
+  df = s12^4 / (vm1^2/(length(x1)-1) + vm2^2/(length(x2)-1)) # not sure it's right ...
+  p = 2*pt(-abs(t), df=df)
+  return(p)
+}
