@@ -27,7 +27,7 @@ IterativeClustering <- function(seurat.object, max.iterations = 20,
   }
   Idents(seurat.object) <- seurat.object$seurat_clusters
   seurat.object <- Rename_Clusters(seurat.object, seq(1, length(unique(seurat.object$seurat_clusters))))
-  seurat.object$seurat_clusters <- Idents(seurat.object)
+  seurat.object$renamed_clusters <- Idents(seurat.object)
   return(seurat.object)
 }
 RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score, pct.1, min.log2.fc, n.dims, dim.reduction){
