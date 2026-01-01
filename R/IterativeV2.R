@@ -146,8 +146,8 @@ CalculateDEScore <- function(seurat.object, cluster1, cluster2, pct.1, min.log2.
                           icc = "i", df.correction = FALSE)
   markers <- markers[abs(markers$log2FC) < Inf, ]
   markers$p_val_adj <- p.adjust(markers$p.value, method = "BH")
-  markers$pct.1 <- length(which(seurat.object@assays$RNA@counts[rownames(markers), colnames(seurat.object)[seurat.object$seurat_clusters == cluster1]] > 0)) / sum(seurat.object$seurat_clusters == cluster1)
-  markers$pct.2 <- length(which(seurat.object@assays$RNA@counts[rownames(markers), colnames(seurat.object)[seurat.object$seurat_clusters == cluster2]] > 0)) / sum(seurat.object$seurat_clusters == cluster2)
+  markers$pct.1 <- length(which(seurat.object@assays[["RNA"]]@layers$counts[rownames(markers), colnames(seurat.object)[seurat.object$seurat_clusters == cluster1]] > 0)) / sum(seurat.object$seurat_clusters == cluster1)
+  markers$pct.2 <- length(which(seurat.object@assays[["RNA"]]@layers$counts[rownames(markers), colnames(seurat.object)[seurat.object$seurat_clusters == cluster2]] > 0)) / sum(seurat.object$seurat_clusters == cluster2)
   markers <- markers[abs(markers$log2FC) > min.log2.fc, ]
   markers <- markers[markers$pct.1 > pct.1 | markers$pct.2 > pct.1, ]
   markers$p_val_adj[markers$p_val_adj == 0] <- 1e-310
