@@ -9,7 +9,7 @@ devtools::install_github("mikejdeines/IterativeV2")
 Performs Leiden clustering (Traag, V. A. et al. Sci Rep 9, 5233 (2019)) iteratively on Seurat objects to identify all clusters with a significant number of differentially-expressed genes.
 The gene scoring metric was adapted from Tasic, B. et al. Nat Neurosci 19, 335–346 (2016), with minor modifications for differential expression testing and simplified cutoffs.
 
-We are now using the weighted t-test DE functions from https://github.com/sergeyleikin/sc-sp-RNASeq. Please cite their paper if you use this package!
+We are now using the weighted t-test DE functions from https://www.biorxiv.org/cgi/content/short/2025.10.20.683496v3. Please cite their paper if you use this package!
 
 Requires the installation of our WeightedTDEGenes package: https://github.com/mikejdeines/WeightedTDEGenes.
 
