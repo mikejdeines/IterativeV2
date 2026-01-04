@@ -11,6 +11,8 @@ The gene scoring metric was adapted from Tasic, B. et al. Nat Neurosci 19, 335â€
 
 We are now using the weighted t-test DE functions from https://github.com/sergeyleikin/sc-sp-RNASeq. Please cite their paper if you use this package!
 
+Requires the installation of our WeightedTDEGenes package: https://github.com/mikejdeines/WeightedTDEGenes.
+
 If a Seurat v5 object is being used, run JoinLayers() prior to clustering.
 
 If the data has been normalized using SCTransform, run PrepSCTFindMarkers() prior to clustering.
