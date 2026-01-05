@@ -71,6 +71,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object[[batch_key]][,1])
           message("Running Harmony integration...")
           cluster.object <- IntegrateLayers(cluster.object, method = HarmonyIntegration)
+          message("Joining integrated layers...")
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
         } else if (integration_method == "CCA" && nlevels(factor(cluster.object[[batch_key]][,1])) >= 2){
           dim.reduction <- "integrated.dr"
@@ -82,6 +83,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object[[batch_key]][,1])
           message("Running CCA integration...")
           cluster.object <- IntegrateLayers(cluster.object, method = CCAIntegration)
+          message("Joining integrated layers...")
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
         } else if (integration_method == "RPCA" && nlevels(factor(cluster.object[[batch_key]][,1])) >= 2){
           dim.reduction <- "integrated.dr"
@@ -93,16 +95,19 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object[[batch_key]][,1])
           message("Running RPCA integration...")
           cluster.object <- IntegrateLayers(cluster.object, method = RPCAIntegration)
+          message("Joining integrated layers...")
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
         } else {
           stop("Invalid integration method or batch key.")
         }
+        message("Creating sNN graph...")
         if (ncol(cluster.object) < 20){
           cluster.object <- FindNeighbors(cluster.object, dims = 1:n.dims, reduction = dim.reduction, k.param = floor(ncol(cluster.object)/2), verbose = FALSE)
         }
         else {
           cluster.object <- FindNeighbors(cluster.object, dims = 1:n.dims, reduction = dim.reduction, verbose = FALSE)
         }
+        message("Finding clusters with Leiden algorithm...")
         cluster.object <- FindClusters(cluster.object, algorithm = 4, random.seed = 1)
         
         repeat {
