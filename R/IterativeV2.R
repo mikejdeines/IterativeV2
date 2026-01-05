@@ -1,6 +1,6 @@
 IterativeClustering <- function(seurat.object, max.iterations = 20,
                                 min.cluster.size = 10, min.de.score = 150, pct.1 = 0.5,
-                                min.log2.fc = 2, n.dims = 30, dim.reduction = "pca", n.cores = 1) {
+                                min.log2.fc = 2, n.dims = 30, integration_method = "None", batch_key = "None", n.cores = 1) {
   #' Performs iterative Leiden clustering on a Seurat object
   #' @param seurat.object a normalized, integrated Seurat object
   #' @param max.iterations the maximum number of iterations to perform. Default 20.
@@ -9,7 +9,8 @@ IterativeClustering <- function(seurat.object, max.iterations = 20,
   #' @param pct.1 the minimum gene expression fraction required for genes used to calculate the DE score. Default 0.5.
   #' @param min.log2.fc the minimum log2 fold change required for genes used to calculate the DE score. Default 2.
   #' @param n.dims number of dimensions used to create the sNN graph and calculate centroids. Default 30.
-  #' @param dim.reduction the dimensional reduction used to create the sNN graph and calculate centroids. Default pca.
+  #' @param integration_method the integration method used ("None", "Harmony", "CCA", or "RPCA"). Default "None".
+  #' @param batch_key the metadata key for batch information. Default "None".
   #' @param n.cores number of cores to use for DGE.2samples. Default 1.
   #' @returns a Seurat object with iterative clustering results in the seurat_clusters metadata value
   require(Seurat)
@@ -31,7 +32,7 @@ IterativeClustering <- function(seurat.object, max.iterations = 20,
   seurat.object$renamed_clusters <- Idents(seurat.object)
   return(seurat.object)
 }
-RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score, pct.1, min.log2.fc, n.dims, dim.reduction, n.cores){
+RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score, pct.1, min.log2.fc, n.dims, integration_method, batch_key, n.cores){
   #' Runs a single Leiden clustering iteration
   #' @param seurat.object a normalized, integrated Seurat object
   #' @param min.cluster.size the minimum number of cells in a cluster
@@ -39,7 +40,8 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
   #' @param pct.1 the minimum gene expression fraction required for genes used to calculate the DE score
   #' @param min.log2.fc the minimum log2 fold change required for genes used to calculate the DE score
   #' @param n.dims number of dimensions used to create the sNN graph and calculate centroids
-  #' @param dim.reduction the dimensional reduction used to create the sNN graph and calculate centroids
+  #' @param integration_method the integration method used ("None", "Harmony", "CCA", or "RPCA")
+  #' @param batch_key the metadata key for batch information
   #' @param n.cores number of cores to use for DGE.2samples
   #' @returns a Seurat object with the results of the iteration in the seurat_clusters metadata value
   require(Seurat)
@@ -50,6 +52,38 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         cluster.object <- subset(seurat.object, idents = cluster_id)
         if (ncol(cluster.object) < min.cluster.size) {
             next
+        }
+        if (integration_method != "None" | levels(seurat.object$`batch_key`) < 2){
+          dim.reduction <- "pca"
+          cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
+          cluster.object <- ScaleData(cluster.object, verbose = FALSE)
+          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
+        } else if (integration_method == "Harmony" & levels(seurat.object$`batch_key`) >= 2){
+          dim.reduction <- "harmony"
+          cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
+          cluster.object <- ScaleData(cluster.object, verbose = FALSE)
+          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
+          cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object$`batch_key`)
+          cluster.object <- IntegrateLayers(cluster.object, method = HarmonyIntegration)
+          cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
+        } else if (integration_method == "CCA" & levels(seurat.object$`batch_key`) >= 2){
+          dim.reduction <- "integrated"
+          cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
+          cluster.object <- ScaleData(cluster.object, verbose = FALSE)
+          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
+          cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object$`batch_key`)
+          cluster.object <- IntegrateLayers(cluster.object, method = CCAIntegration)
+          cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
+        } else if (integration_method == "RPCA" & levels(seurat.object$`batch_key`) >= 2){
+          dim.reduction <- "integrated"
+          cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
+          cluster.object <- ScaleData(cluster.object, verbose = FALSE)
+          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
+          cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object$`batch_key`)
+          cluster.object <- IntegrateLayers(cluster.object, method = RPCAIntegration)
+          cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
+        } else {
+          stop("Invalid integration method or batch key.")
         }
         if (ncol(cluster.object) < 20){
           cluster.object <- FindNeighbors(cluster.object, dims = 1:n.dims, reduction = dim.reduction, k.param = floor(ncol(cluster.object)/2), verbose = FALSE)
