@@ -63,7 +63,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
           cluster.object <- ScaleData(cluster.object, verbose = FALSE)
           cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
-          cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object$`batch_key`)
+          cluster.object[["RNA"]] <- SplitAssay(cluster.object[["RNA"]], f = cluster.object$batch_key)
           cluster.object <- IntegrateLayers(cluster.object, method = HarmonyIntegration)
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
         } else if (integration_method == "CCA" & levels(seurat.object$`batch_key`) >= 2){
@@ -71,7 +71,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
           cluster.object <- ScaleData(cluster.object, verbose = FALSE)
           cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
-          cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object$`batch_key`)
+          cluster.object[["RNA"]] <- SplitAssay(cluster.object[["RNA"]], f = cluster.object$batch_key)
           cluster.object <- IntegrateLayers(cluster.object, method = CCAIntegration)
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
         } else if (integration_method == "RPCA" & levels(seurat.object$`batch_key`) >= 2){
@@ -79,7 +79,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
           cluster.object <- ScaleData(cluster.object, verbose = FALSE)
           cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
-          cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object$`batch_key`)
+          cluster.object[["RNA"]] <- SplitAssay(cluster.object[["RNA"]], f = cluster.object$batch_key)
           cluster.object <- IntegrateLayers(cluster.object, method = RPCAIntegration)
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
         } else {
