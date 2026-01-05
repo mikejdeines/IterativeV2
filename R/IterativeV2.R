@@ -19,7 +19,7 @@ IterativeClustering <- function(seurat.object, max.iterations = 20,
   prev.n.clusters <- 1
   seurat.object$seurat_clusters <- 1
   repeat {
-    seurat.object <- RunClusteringIteration(seurat.object, min.cluster.size, min.de.score, pct.1, min.log2.fc, n.dims, dim.reduction, n.cores)
+    seurat.object <- RunClusteringIteration(seurat.object, min.cluster.size, min.de.score, pct.1, min.log2.fc, n.dims, integration_method, batch_key, n.cores)
     curr.n.clusters <- length(unique(seurat.object$seurat_clusters))
     if (iteration >= max.iterations || curr.n.clusters == prev.n.clusters) {
       break
