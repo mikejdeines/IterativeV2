@@ -120,25 +120,37 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         message("Merging clusters based on DE scores and sizes...")
         repeat {
                 sub_clusters <- unique(cluster.object$seurat_clusters)
-                if (length(sub_clusters) <= 1) {
+                n_clusters <- length(sub_clusters)
+                if (n_clusters <= 1) {
                     break
                 }
                 # Use environment for O(1) lookup instead of %in% which is O(n)
                 merged_pairs_env <- new.env(hash = TRUE)
                 # Pre-calculate cluster sizes for faster access
-                cluster_sizes <- table(cluster.object$seurat_clusters)
+                cluster_sizes <- tabulate(as.factor(cluster.object$seurat_clusters))
                 # Convert sub_clusters to character once for consistent indexing
                 sub_clusters_char <- as.character(sub_clusters)
                 merged <- FALSE
                 
-                for (i in seq_along(sub_clusters)) {
+                # Sort clusters by distance to their nearest neighbor (process closest pairs first)
+                min_distances <- numeric(n_clusters)
+                closest_neighbors <- integer(n_clusters)
+                for (i in seq_len(n_clusters)) {
+                    distances <- dist_matrix[i, ]
+                    distances[i] <- Inf
+                    closest_neighbors[i] <- which.min(distances)
+                    min_distances[i] <- distances[closest_neighbors[i]]
+                }
+                # Process in order of increasing distance (most similar pairs first)
+                order_idx <- order(min_distances)
+                
+                for (idx in order_idx) {
+                    i <- idx
                     cluster1 <- sub_clusters[i]
                     cluster1_char <- sub_clusters_char[i]
                     
-                    # Direct index access - no need to check if exists since we're iterating by index
-                    distances <- dist_matrix[i, ]
-                    distances[i] <- Inf
-                    closest_idx <- which.min(distances)
+                    # Get the pre-computed closest neighbor
+                    closest_idx <- closest_neighbors[i]
                     cluster2 <- sub_clusters[closest_idx]
                     cluster2_char <- sub_clusters_char[closest_idx]
                     
@@ -153,11 +165,11 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
                     if (!is.null(merged_pairs_env[[pair_key]])) {
                         next
                     }
+                    merged_pairs_env[[pair_key]] <- TRUE
                     
                     # Check cluster sizes from cached table
-                    if (cluster_sizes[[cluster1_char]] < min.cluster.size || cluster_sizes[[cluster2_char]] < min.cluster.size) {
+                    if (cluster_sizes[i] < min.cluster.size || cluster_sizes[closest_idx] < min.cluster.size) {
                         cluster.object$seurat_clusters[cluster.object$seurat_clusters == cluster2] <- cluster1
-                        merged_pairs_env[[pair_key]] <- TRUE
                         merged <- TRUE
                         # Recalculate centroids and distance matrix after merge
                         centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
@@ -167,7 +179,6 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
                     de_score <- CalculateDEScore(cluster.object, cluster1, cluster2, pct.1, min.log2.fc, n.cores)
                     if (de_score < min.de.score) {
                         cluster.object$seurat_clusters[cluster.object$seurat_clusters == cluster2] <- cluster1
-                        merged_pairs_env[[pair_key]] <- TRUE
                         merged <- TRUE
                         # Recalculate centroids and distance matrix after merge
                         centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
@@ -227,44 +238,65 @@ CalculateDEScore <- function(seurat.object, cluster1, cluster2, pct.1, min.log2.
   #' @param n.cores number of cores to use for DGE.2samples
   #' @returns the DE score between the pair of clusters
   require(Seurat)
-  if (sum(seurat.object$seurat_clusters == cluster1) < 3 || sum(seurat.object$seurat_clusters == cluster2) < 3) {
-        return(0)
+  
+  # Pre-compute cluster membership (faster than repeated comparisons)
+  cluster_ids <- seurat.object$seurat_clusters
+  cells_cluster1 <- cluster_ids == cluster1
+  cells_cluster2 <- cluster_ids == cluster2
+  n_cells1 <- sum(cells_cluster1)
+  n_cells2 <- sum(cells_cluster2)
+  
+  if (n_cells1 < 3 || n_cells2 < 3) {
+    return(0)
   }
+  
   markers <- DGE.2samples(seurat.object, ident.1 = cluster1, ident.2 = cluster2, 
                           fc.thr = 1, min.pct = 0, max.pval = 1, min.count = 10,
                           icc = "i", df.correction = FALSE, n.cores = n.cores)
-  markers <- markers[abs(markers$log2FC) < Inf, ]
   
+  # Early exit checks combined
   if (nrow(markers) == 0) {
     return(0)
   }
   
+  # Filter infinite values and apply log2FC threshold in one step
+  keep <- abs(markers$log2FC) > min.log2.fc & abs(markers$log2FC) < Inf
+  if (sum(keep) == 0) {
+    return(0)
+  }
+  markers <- markers[keep, ]
+  
+  # Adjust p-values
   markers$p_val_adj <- p.adjust(markers$p.value, method = "BH")
   
-  # Get count matrix
+  # Get count matrix once
   counts_matrix <- seurat.object@assays[["RNA"]]@layers$counts
-  cells_cluster1 <- which(seurat.object$seurat_clusters == cluster1)
-  cells_cluster2 <- which(seurat.object$seurat_clusters == cluster2)
+  gene_indices <- match(rownames(markers), rownames(seurat.object))
   
   # Calculate pct.1 and pct.2 for each gene using vectorized operations
-  gene_indices <- match(rownames(markers), rownames(seurat.object))
   counts_cluster1 <- counts_matrix[gene_indices, cells_cluster1, drop = FALSE]
   counts_cluster2 <- counts_matrix[gene_indices, cells_cluster2, drop = FALSE]
   
-  # Use Matrix::rowSums for sparse matrices
+  # Use Matrix::rowSums for sparse matrices with pre-computed lengths
   if (inherits(counts_matrix, "dgCMatrix") || inherits(counts_matrix, "IterableMatrix")) {
-    markers$pct.1 <- Matrix::rowSums(counts_cluster1 > 0) / length(cells_cluster1)
-    markers$pct.2 <- Matrix::rowSums(counts_cluster2 > 0) / length(cells_cluster2)
+    pct1 <- Matrix::rowSums(counts_cluster1 > 0) / n_cells1
+    pct2 <- Matrix::rowSums(counts_cluster2 > 0) / n_cells2
   } else {
-    markers$pct.1 <- rowSums(counts_cluster1 > 0) / length(cells_cluster1)
-    markers$pct.2 <- rowSums(counts_cluster2 > 0) / length(cells_cluster2)
+    pct1 <- rowSums(counts_cluster1 > 0) / n_cells1
+    pct2 <- rowSums(counts_cluster2 > 0) / n_cells2
   }
   
-  markers <- markers[abs(markers$log2FC) > min.log2.fc, ]
-  markers <- markers[markers$pct.1 > pct.1 | markers$pct.2 > pct.1, ]
-  markers$p_val_adj[markers$p_val_adj == 0] <- 1e-310
-  markers$de_score <- -log10(markers$p_val_adj)
-  markers$de_score[markers$de_score > 20] <- 20
-  de_score <- sum(markers$de_score)
-  return(de_score)
+  # Filter by pct threshold
+  keep_pct <- pct1 > pct.1 | pct2 > pct.1
+  if (sum(keep_pct) == 0) {
+    return(0)
+  }
+  
+  # Apply filtering and calculate DE score in vectorized manner
+  p_adj_filtered <- markers$p_val_adj[keep_pct]
+  p_adj_filtered[p_adj_filtered == 0] <- 1e-310
+  de_scores <- -log10(p_adj_filtered)
+  de_scores[de_scores > 20] <- 20
+  
+  return(sum(de_scores))
 }
