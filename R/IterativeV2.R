@@ -113,6 +113,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         # Initialize for merge loop
         sub_clusters <- unique(cluster.object$seurat_clusters)
         if (length(sub_clusters) > 1) {
+            message("Calculating initial centroids and distance matrix...")
             centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
             dist_matrix <- as.matrix(dist(centroids))
         }
@@ -122,33 +123,41 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
                 if (length(sub_clusters) <= 1) {
                     break
                 }
-                merged_pairs <- character(0)
-                cluster_map <- setNames(seq_along(sub_clusters), as.character(sub_clusters))
+                # Use environment for O(1) lookup instead of %in% which is O(n)
+                merged_pairs_env <- new.env(hash = TRUE)
                 # Pre-calculate cluster sizes for faster access
                 cluster_sizes <- table(cluster.object$seurat_clusters)
+                # Convert sub_clusters to character once for consistent indexing
+                sub_clusters_char <- as.character(sub_clusters)
                 merged <- FALSE
                 
                 for (i in seq_along(sub_clusters)) {
                     cluster1 <- sub_clusters[i]
-                    cluster1_char <- as.character(cluster1)
+                    cluster1_char <- sub_clusters_char[i]
                     
-                    if (!(cluster1_char %in% names(cluster_map))) {
-                        next
-                    }
-                    j <- cluster_map[[cluster1_char]]
-                    distances <- dist_matrix[j, ]
-                    distances[j] <- Inf
+                    # Direct index access - no need to check if exists since we're iterating by index
+                    distances <- dist_matrix[i, ]
+                    distances[i] <- Inf
                     closest_idx <- which.min(distances)
                     cluster2 <- sub_clusters[closest_idx]
-                    cluster2_char <- as.character(cluster2)
-                    pair_key <- paste(sort(c(cluster1_char, cluster2_char)), collapse = "_")
-                    if (pair_key %in% merged_pairs) {
+                    cluster2_char <- sub_clusters_char[closest_idx]
+                    
+                    # Create pair key more efficiently
+                    if (cluster1_char < cluster2_char) {
+                        pair_key <- paste0(cluster1_char, "_", cluster2_char)
+                    } else {
+                        pair_key <- paste0(cluster2_char, "_", cluster1_char)
+                    }
+                    
+                    # O(1) lookup in environment
+                    if (!is.null(merged_pairs_env[[pair_key]])) {
                         next
                     }
+                    
                     # Check cluster sizes from cached table
                     if (cluster_sizes[[cluster1_char]] < min.cluster.size || cluster_sizes[[cluster2_char]] < min.cluster.size) {
                         cluster.object$seurat_clusters[cluster.object$seurat_clusters == cluster2] <- cluster1
-                        merged_pairs <- c(merged_pairs, pair_key)
+                        merged_pairs_env[[pair_key]] <- TRUE
                         merged <- TRUE
                         # Recalculate centroids and distance matrix after merge
                         centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
@@ -158,7 +167,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
                     de_score <- CalculateDEScore(cluster.object, cluster1, cluster2, pct.1, min.log2.fc, n.cores)
                     if (de_score < min.de.score) {
                         cluster.object$seurat_clusters[cluster.object$seurat_clusters == cluster2] <- cluster1
-                        merged_pairs <- c(merged_pairs, pair_key)
+                        merged_pairs_env[[pair_key]] <- TRUE
                         merged <- TRUE
                         # Recalculate centroids and distance matrix after merge
                         centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
