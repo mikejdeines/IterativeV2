@@ -67,7 +67,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           cluster.object <- IntegrateLayers(cluster.object, method = HarmonyIntegration)
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
         } else if (integration_method == "CCA" & levels(seurat.object$`batch_key`) >= 2){
-          dim.reduction <- "integrated"
+          dim.reduction <- "integrated.dr"
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
           cluster.object <- ScaleData(cluster.object, verbose = FALSE)
           cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
@@ -75,7 +75,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           cluster.object <- IntegrateLayers(cluster.object, method = CCAIntegration)
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
         } else if (integration_method == "RPCA" & levels(seurat.object$`batch_key`) >= 2){
-          dim.reduction <- "integrated"
+          dim.reduction <- "integrated.dr"
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
           cluster.object <- ScaleData(cluster.object, verbose = FALSE)
           cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
