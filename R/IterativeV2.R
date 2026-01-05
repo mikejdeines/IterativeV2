@@ -53,33 +53,33 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         if (ncol(cluster.object) < min.cluster.size) {
             next
         }
-        if (integration_method != "None" | levels(seurat.object$`batch_key`) < 2){
+        if (integration_method != "None" | levels(cluster.object[[batch_key]][,1]) < 2){
           dim.reduction <- "pca"
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
           cluster.object <- ScaleData(cluster.object, verbose = FALSE)
           cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
-        } else if (integration_method == "Harmony" & levels(seurat.object$`batch_key`) >= 2){
+        } else if (integration_method == "Harmony" & levels(cluster.object[[batch_key]][,1]) >= 2){
           dim.reduction <- "harmony"
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
           cluster.object <- ScaleData(cluster.object, verbose = FALSE)
           cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
-          cluster.object[["RNA"]] <- SplitAssay(cluster.object[["RNA"]], f = cluster.object$batch_key)
+          cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object[[batch_key]][,1])
           cluster.object <- IntegrateLayers(cluster.object, method = HarmonyIntegration)
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
-        } else if (integration_method == "CCA" & levels(seurat.object$`batch_key`) >= 2){
+        } else if (integration_method == "CCA" & levels(cluster.object[[batch_key]][,1]) >= 2){
           dim.reduction <- "integrated.dr"
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
           cluster.object <- ScaleData(cluster.object, verbose = FALSE)
           cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
-          cluster.object[["RNA"]] <- SplitAssay(cluster.object[["RNA"]], f = cluster.object$batch_key)
+          cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object[[batch_key]][,1])
           cluster.object <- IntegrateLayers(cluster.object, method = CCAIntegration)
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
-        } else if (integration_method == "RPCA" & levels(seurat.object$`batch_key`) >= 2){
+        } else if (integration_method == "RPCA" & levels(cluster.object[[batch_key]][,1]) >= 2){
           dim.reduction <- "integrated.dr"
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
           cluster.object <- ScaleData(cluster.object, verbose = FALSE)
           cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
-          cluster.object[["RNA"]] <- SplitAssay(cluster.object[["RNA"]], f = cluster.object$batch_key)
+          cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object[[batch_key]][,1])
           cluster.object <- IntegrateLayers(cluster.object, method = RPCAIntegration)
           cluster.object[["RNA"]] <- JoinLayers(cluster.object[["RNA"]])
         } else {
