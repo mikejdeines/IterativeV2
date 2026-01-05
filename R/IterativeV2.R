@@ -108,7 +108,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           cluster.object <- FindNeighbors(cluster.object, dims = 1:n.dims, reduction = dim.reduction, verbose = FALSE)
         }
         message("Finding clusters with Leiden algorithm...")
-        cluster.object <- FindClusters(cluster.object, algorithm = 4, random.seed = 1)
+        cluster.object <- FindClusters(cluster.object, algorithm = 4, random.seed = 1, leiden_method = "igraph", resolution = 1)
         
         repeat {
                 sub_clusters <- unique(cluster.object$seurat_clusters)
