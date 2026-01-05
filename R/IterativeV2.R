@@ -206,14 +206,19 @@ CalculateDEScore <- function(seurat.object, cluster1, cluster2, pct.1, min.log2.
   cells_cluster1 <- which(seurat.object$seurat_clusters == cluster1)
   cells_cluster2 <- which(seurat.object$seurat_clusters == cluster2)
   
-  # Calculate pct.1 and pct.2 for each gene
+  # Calculate pct.1 and pct.2 for each gene using vectorized operations
   gene_indices <- match(rownames(markers), rownames(seurat.object))
-  markers$pct.1 <- sapply(gene_indices, function(i) {
-    sum(counts_matrix[i, cells_cluster1] > 0) / length(cells_cluster1)
-  })
-  markers$pct.2 <- sapply(gene_indices, function(i) {
-    sum(counts_matrix[i, cells_cluster2] > 0) / length(cells_cluster2)
-  })
+  counts_cluster1 <- counts_matrix[gene_indices, cells_cluster1, drop = FALSE]
+  counts_cluster2 <- counts_matrix[gene_indices, cells_cluster2, drop = FALSE]
+  
+  # Use Matrix::rowSums for sparse matrices
+  if (inherits(counts_matrix, "dgCMatrix") || inherits(counts_matrix, "IterableMatrix")) {
+    markers$pct.1 <- Matrix::rowSums(counts_cluster1 > 0) / length(cells_cluster1)
+    markers$pct.2 <- Matrix::rowSums(counts_cluster2 > 0) / length(cells_cluster2)
+  } else {
+    markers$pct.1 <- rowSums(counts_cluster1 > 0) / length(cells_cluster1)
+    markers$pct.2 <- rowSums(counts_cluster2 > 0) / length(cells_cluster2)
+  }
   
   markers <- markers[abs(markers$log2FC) > min.log2.fc, ]
   markers <- markers[markers$pct.1 > pct.1 | markers$pct.2 > pct.1, ]
