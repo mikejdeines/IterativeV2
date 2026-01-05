@@ -54,20 +54,20 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         if (ncol(cluster.object) < min.cluster.size) {
             next
         }
-        if (integration_method != "None" || levels(cluster.object[[batch_key]][,1]) < 2){
+        if (integration_method == "None" || levels(cluster.object[[batch_key]][,1]) < 2){
           dim.reduction <- "pca"
           message("Finding variable features and scaling data...")
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
-          cluster.object <- ScaleData(cluster.object, verbose = FALSE)
+          cluster.object <- ScaleData(cluster.object, verbose = FALSE, features = VariableFeatures(cluster.object))
           message("Running PCA...")
-          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
+          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE, features = VariableFeatures(cluster.object), approx = TRUE)
         } else if (integration_method == "Harmony" && levels(cluster.object[[batch_key]][,1]) >= 2){
           dim.reduction <- "harmony"
           message("Finding variable features and scaling data...")
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
-          cluster.object <- ScaleData(cluster.object, verbose = FALSE)
+          cluster.object <- ScaleData(cluster.object, verbose = FALSE, features = VariableFeatures(cluster.object))
           message("Running PCA...")
-          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
+          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE, features = VariableFeatures(cluster.object), approx = TRUE)
           cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object[[batch_key]][,1])
           message("Running Harmony integration...")
           cluster.object <- IntegrateLayers(cluster.object, method = HarmonyIntegration)
@@ -76,9 +76,9 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           dim.reduction <- "integrated.dr"
           message("Finding variable features and scaling data...")
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
-          cluster.object <- ScaleData(cluster.object, verbose = FALSE)
+          cluster.object <- ScaleData(cluster.object, verbose = FALSE, features = VariableFeatures(cluster.object))
           message("Running PCA...")
-          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
+          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE, features = VariableFeatures(cluster.object), approx = TRUE)
           cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object[[batch_key]][,1])
           message("Running CCA integration...")
           cluster.object <- IntegrateLayers(cluster.object, method = CCAIntegration)
@@ -87,9 +87,9 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
           dim.reduction <- "integrated.dr"
           message("Finding variable features and scaling data...")
           cluster.object <- FindVariableFeatures(cluster.object, verbose = FALSE)
-          cluster.object <- ScaleData(cluster.object, verbose = FALSE)
+          cluster.object <- ScaleData(cluster.object, verbose = FALSE, features = VariableFeatures(cluster.object))
           message("Running PCA...")
-          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE)
+          cluster.object <- RunPCA(cluster.object, npcs = n.dims, verbose = FALSE, features = VariableFeatures(cluster.object), approx = TRUE)
           cluster.object[["RNA"]] <- split(cluster.object[["RNA"]], f = cluster.object[[batch_key]][,1])
           message("Running RPCA integration...")
           cluster.object <- IntegrateLayers(cluster.object, method = RPCAIntegration)
