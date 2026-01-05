@@ -122,25 +122,41 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
                 if (length(sub_clusters) <= 1) {
                     break
                 }
-                merged_pairs <- list()
-                cluster_map <- setNames(seq_along(sub_clusters), sub_clusters)
+                merged_pairs <- character(0)
+                cluster_map <- setNames(seq_along(sub_clusters), as.character(sub_clusters))
+                # Pre-calculate cluster sizes for faster access
+                cluster_sizes <- table(cluster.object$seurat_clusters)
                 merged <- FALSE
                 
-                for (cluster1 in sub_clusters) {
-                    if (!(as.character(cluster1) %in% names(cluster_map))) {
+                for (i in seq_along(sub_clusters)) {
+                    cluster1 <- sub_clusters[i]
+                    cluster1_char <- as.character(cluster1)
+                    
+                    if (!(cluster1_char %in% names(cluster_map))) {
                         next
                     }
-                    j <- cluster_map[[as.character(cluster1)]]
+                    j <- cluster_map[[cluster1_char]]
                     distances <- dist_matrix[j, ]
                     distances[j] <- Inf
                     closest_idx <- which.min(distances)
                     cluster2 <- sub_clusters[closest_idx]
-                    pair_key <- paste(sort(c(cluster1, cluster2)), collapse = "_")
+                    cluster2_char <- as.character(cluster2)
+                    pair_key <- paste(sort(c(cluster1_char, cluster2_char)), collapse = "_")
                     if (pair_key %in% merged_pairs) {
                         next
                     }
+                    # Check cluster sizes from cached table
+                    if (cluster_sizes[[cluster1_char]] < min.cluster.size || cluster_sizes[[cluster2_char]] < min.cluster.size) {
+                        cluster.object$seurat_clusters[cluster.object$seurat_clusters == cluster2] <- cluster1
+                        merged_pairs <- c(merged_pairs, pair_key)
+                        merged <- TRUE
+                        # Recalculate centroids and distance matrix after merge
+                        centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
+                        dist_matrix <- as.matrix(dist(centroids))
+                        break
+                    }
                     de_score <- CalculateDEScore(cluster.object, cluster1, cluster2, pct.1, min.log2.fc, n.cores)
-                    if (de_score < min.de.score || sum(cluster.object$seurat_clusters == cluster2) < min.cluster.size || sum(cluster.object$seurat_clusters == cluster1) < min.cluster.size) {
+                    if (de_score < min.de.score) {
                         cluster.object$seurat_clusters[cluster.object$seurat_clusters == cluster2] <- cluster1
                         merged_pairs <- c(merged_pairs, pair_key)
                         merged <- TRUE
@@ -180,10 +196,11 @@ FindCentroids <- function(seurat.object, n.dims, dim.reduction) {
   #' @returns centroids for each cluster in dim.reduction space
   require(Seurat)
   embeddings <- Embeddings(seurat.object, reduction = dim.reduction)[, 1:n.dims]
-  clusters <- seurat.object$seurat_clusters
-  centroids <- aggregate(embeddings, by = list(cluster = clusters), FUN = mean)
-  rownames(centroids) <- centroids$cluster
-  centroids$cluster <- NULL
+  clusters <- as.character(seurat.object$seurat_clusters)
+  # Use rowsum which is much faster than aggregate for large matrices
+  cluster_sums <- rowsum(embeddings, clusters)
+  cluster_counts <- as.numeric(table(clusters))
+  centroids <- cluster_sums / cluster_counts
   return(centroids)
 }
 CalculateDEScore <- function(seurat.object, cluster1, cluster2, pct.1, min.log2.fc, n.cores){
