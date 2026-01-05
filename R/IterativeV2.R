@@ -117,7 +117,7 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
             centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
             dist_matrix <- as.matrix(dist(centroids))
         }
-        
+        message("Merging clusters based on DE scores and sizes...")
         repeat {
                 sub_clusters <- unique(cluster.object$seurat_clusters)
                 if (length(sub_clusters) <= 1) {
@@ -204,11 +204,16 @@ FindCentroids <- function(seurat.object, n.dims, dim.reduction) {
   #' @param dim.reduction the dimensional reduction used to calculate centroids
   #' @returns centroids for each cluster in dim.reduction space
   require(Seurat)
-  embeddings <- Embeddings(seurat.object, reduction = dim.reduction)[, 1:n.dims]
-  clusters <- as.character(seurat.object$seurat_clusters)
+  embeddings <- Embeddings(seurat.object, reduction = dim.reduction)[, 1:n.dims, drop = FALSE]
+  clusters <- seurat.object$seurat_clusters
+  # Factor conversion for rowsum is faster than character
+  if (!is.factor(clusters)) {
+    clusters <- as.factor(clusters)
+  }
   # Use rowsum which is much faster than aggregate for large matrices
-  cluster_sums <- rowsum(embeddings, clusters)
-  cluster_counts <- as.numeric(table(clusters))
+  cluster_sums <- rowsum(embeddings, clusters, reorder = FALSE)
+  cluster_counts <- tabulate(clusters)
+  # Vectorized division is faster than recycling
   centroids <- cluster_sums / cluster_counts
   return(centroids)
 }
