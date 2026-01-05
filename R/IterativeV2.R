@@ -109,19 +109,23 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
         }
         message("Finding clusters with Leiden algorithm...")
         cluster.object <- FindClusters(cluster.object, algorithm = 4, random.seed = 1, leiden_method = "igraph", resolution = 1)
+        message(paste(length(unique(cluster.object$seurat_clusters)), "sub-clusters found. Merging similar clusters..."))
+        # Initialize for merge loop
+        sub_clusters <- unique(cluster.object$seurat_clusters)
+        if (length(sub_clusters) > 1) {
+            centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
+            dist_matrix <- as.matrix(dist(centroids))
+        }
         
         repeat {
                 sub_clusters <- unique(cluster.object$seurat_clusters)
-                prev_n_subclusters <- length(sub_clusters)
-                if (prev_n_subclusters <= 1) {
+                if (length(sub_clusters) <= 1) {
                     break
                 }
-                changed <- FALSE
                 merged_pairs <- list()
-                centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
-                dist_matrix <- as.matrix(dist(centroids))
                 cluster_map <- setNames(seq_along(sub_clusters), sub_clusters)
                 merged <- FALSE
+                
                 for (cluster1 in sub_clusters) {
                     if (!(as.character(cluster1) %in% names(cluster_map))) {
                         next
@@ -138,17 +142,17 @@ RunClusteringIteration <- function(seurat.object, min.cluster.size, min.de.score
                     de_score <- CalculateDEScore(cluster.object, cluster1, cluster2, pct.1, min.log2.fc, n.cores)
                     if (de_score < min.de.score || sum(cluster.object$seurat_clusters == cluster2) < min.cluster.size || sum(cluster.object$seurat_clusters == cluster1) < min.cluster.size) {
                         cluster.object$seurat_clusters[cluster.object$seurat_clusters == cluster2] <- cluster1
-                        changed <- TRUE
                         merged_pairs <- c(merged_pairs, pair_key)
                         merged <- TRUE
+                        # Recalculate centroids and distance matrix after merge
+                        centroids <- FindCentroids(cluster.object, n.dims, dim.reduction)
+                        dist_matrix <- as.matrix(dist(centroids))
                         break
                     }
                 }
-                if (merged) {
-                    next
-                }
-                sub_clusters_new <- unique(cluster.object$seurat_clusters)
-                if (length(sub_clusters_new) == prev_n_subclusters || !changed) {
+                
+                # If no merges happened this iteration, exit
+                if (!merged) {
                     break
                 }
         }
